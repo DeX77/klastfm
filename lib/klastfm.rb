@@ -81,11 +81,13 @@ class Klastfm
     tracks_not_found = []
     week_list.each do |week|
       bar.inc
-      @lastfm.tracks_in_week(week['from'], week['to']).each do |track|
+      tracks_in_week = @lastfm.tracks_in_week(week['from'], week['to'])
+      tracks_in_week.each do |track|
         begin
           url = Track.url_of(track['artist'], track['name'])
         rescue TypeError => e
           puts "Track Error: #{track.inspect}", e.inspect
+          next
         end
         if url.nil? || @all_tracks[url].nil?
           artist_track_string = "#{track['artist']} - #{track['name']}"
@@ -98,7 +100,7 @@ class Klastfm
         if week['to'].to_i > @all_tracks[url][:accessdate]
           @all_tracks[url][:accessdate] = week['to'].to_i
         end
-      end
+      end unless tracks_in_week.blank?
     end
     File.open('log/all_tracks_not_found_in_your_collection.yaml', 'w') { |f| f.write(tracks_not_found.sort.to_yaml) }
     bar.finish && puts
