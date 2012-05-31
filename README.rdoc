@@ -6,11 +6,7 @@ This tool grabs your statistic from last.fm and merges it into your existing ama
 
 Since last.fm relies on MusicBrainz ( http://musicbrainz.org ) for tagging, in general it is a good idea to tag your media with MusicBrainz Picard ( http://musicbrainz.org/doc/MusicBrainz_Picard ) By tagging your music with Picard (or any other ID3 tagger using MusicBrainz) you will get the best results when using this script. All tracks not recognized by this script are skipped.
 
-It will synchronize your playcount (how often you listened to a specific track), the first and last played date of a track (with the accuracy of a few days) and it will also score your tracks by some voodoo algorithm.
-
-The idea is derived from "Last Sync" ( http://kde-apps.org/content/show.php/Last+Sync?content=65784 ). I think the idea is pretty cool, but "Last Sync" is too old to work with newer versions of amarok. The last version is from 2007 and the main problems are that it handles sqlite databases only (Amarok 1.x) and it uses the legacy last.fm api.
-
-Bring some time! Since you will synchronize a lot with last.fm api this script will run a long time. For my account (ca. 32000 tracks) it needs nearly 2 hours!
+It will synchronize your playcount (how often you listened to a specific track) and the first and last played date of a track (with the accuracy of a few days).
 
 Listed on kde-apps.org http://kde-apps.org/content/show.php?content=127016
 
@@ -20,22 +16,25 @@ When reporting errors, please include your last.fm username in the bugreport!
 
 = Howto
 
-Tested on Kubuntu natty with ruby 1.8.7 (2010-08-16 patchlevel 302) [x86_64-linux]
+Tested on Kubuntu precise with ruby 1.8.7 (2012-02-08 patchlevel 358) [x86_64-linux]
 
 * BACKUP YOUR DATABASE! You have been warned! :)
-* Copy config.yaml.example to config.yaml and edit it (add your last.fm api key! Google for it!)
-* ruby ./klastfm
+* Copy config.yaml.example to config.yaml and edit it
+* Grab a copy of lastexport.py and run it: http://bugs.foocorp.net/projects/librefm/wiki/LastToLibre
+* Copy the exported_tracks.txt to the data folder
+* ./klastfm
 
 There is a gentoo howto, too. Take a look here:
 * http://kde-apps.org/content/show.php?content=127016&forumpage=3#commentvoter414901 (Thanks to abelau)
 
-= Dependencies on Kubuntu Natty:
+= Dependencies:
 
 * sudo apt-get install ruby ruby1.8-dev mysql-client libmysqlclient-dev libruby rubygems
-* sudo gem install mysql httparty progressbar activerecord logger --no-rdoc --no-ri
+* sudo gem install mysql progressbar activerecord logger --no-rdoc --no-ri
 
 = Version
 
+* 0.7 Klastfm is now based on LastToLibre, an external app to download your last.fm history, removed the option to rate the tracks
 * 0.6 More bugs fixed, removed the option to disable set dates functionality
 * 0.5 More bugs fixed
 * 0.4 Refactoring and bug fixing
@@ -47,3 +46,4 @@ There is a gentoo howto, too. Take a look here:
 
 * Code by Johannes Leers http://www.gauda.de
 * Thanks to Kevin Bocksrocker for the inspiration http://kde-apps.org/content/show.php/Last+Sync?content=65784
+* Thanks to the guys from LastToLibre

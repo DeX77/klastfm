@@ -3,11 +3,9 @@ class Klastfm
   require 'yaml'
   require 'active_record'
   require 'logger'
-  require 'httparty'
   require 'progressbar'
 
   require 'lib/models'
-  require 'lib/lastfm'
 
   def initialize
     begin
@@ -28,116 +26,66 @@ class Klastfm
       raise 'Cannot connect to the database. Check config/config.yaml'
     end
 
-    @lastfm = Lastfm.new(config['lastfm']['user'], config['lastfm']['api_key'])
-
-    begin
-      @lastfm.test_the_connection_to_lastfm
-    rescue
-      raise "ERROR: Connection to last.fm failed. Are you sure you added your last.fm api key to config/config.yaml?"
-    end
-
     @all_tracks = nil
     @pages = nil
   end
 
   def get_all_tracks
-    @all_tracks = @lastfm.all_tracks(@pages)
-  end
+    @all_tracks = {}
+    File.open('log/not_found.log', 'w') { |file| file.write("These tracks were not found in your Amarok collection:\n\n") }
+    lines = File.open('data/exported_tracks.txt').readlines#[0..1000]
+    puts "processing #{lines.size} tracks"
+    bar = ProgressBar.new('processing', lines.size)
 
-  def create_statistics
-    tracks = Track.all(:select => 'url', :order => 'url')
-    puts 'creating a statistic entry for every track'
-    bar = ProgressBar.new('creating statistics', tracks.size)
-    tracks.each do |track|
-      Statistic.find_or_create_by_url(track.url, {
-              :url => track.url,
-              :createdate => 0,
-              :accessdate => 0,
-              :score => 0,
-              :rating => 0,
-              :playcount => 0
-      })
+    lines.each do |line|
       bar.inc
-    end
-    bar.finish && puts
-  end
-
-  def score_tracks
-    @all_tracks.each do |_,track|
-      next if track.nil?
-      score = begin
-        ((@all_tracks.size-track[:index])/(@all_tracks.size/100.0))
-      rescue ZeroDivisionError; 0 end
-      track[:score] = score<0 ? 0 : score
-    end
-  end
-
-  def date_tracks
-    Statistic.update_all('createdate = 0, accessdate = 0', ['url in (?)', @all_tracks.keys])
-
-    week_list = @lastfm.week_list(@pages)
-    puts "getting all tracks played in the last #{week_list.size} weeks"
-    bar = ProgressBar.new('date tracks', week_list.size)
-    tracks_not_found = []
-    week_list.each do |week|
-      bar.inc
-      tracks_in_week = @lastfm.tracks_in_week(week['from'], week['to'])
-      next if tracks_in_week.blank?
-      tracks_in_week.each do |track|
-        begin
-          url = Track.url_of(track['artist'], track['name'])
-        rescue TypeError => e
-          puts "Track Error: #{track.inspect}", e.inspect
-        end
-        if url.nil? || @all_tracks[url].nil?
-          artist_track_string = "#{track['artist']} - #{track['name']}"
-          tracks_not_found << artist_track_string unless tracks_not_found.include?(artist_track_string)
+      time, title, artist = line.split("\t")
+      time = time.to_i
+      begin
+        url = Track.url_of(artist, title)
+        unless url
+          File.open('log/not_found.log', 'a') { |file| file.write("#{artist} - #{title}\n") }
           next
         end
-        if week['from'].to_i < @all_tracks[url][:createdate] || @all_tracks[url][:createdate].zero?
-          @all_tracks[url][:createdate] = week['from'].to_i
+
+        if @all_tracks[url]
+          @all_tracks[url][:playcount] = @all_tracks[url][:playcount]+1
+          @all_tracks[url][:accessdate] = (time > @all_tracks[url][:accessdate] ? time : @all_tracks[url][:accessdate])
+          @all_tracks[url][:createdate] = (time < @all_tracks[url][:createdate] ? time : @all_tracks[url][:createdate])
+        else
+          @all_tracks[url] = {
+                  :artist => artist,
+                  :title => title,
+                  :playcount => 1,
+                  :accessdate => time,
+                  :createdate => time
+          }
         end
-        if week['to'].to_i > @all_tracks[url][:accessdate]
-          @all_tracks[url][:accessdate] = week['to'].to_i
-        end
+      rescue
+        puts "error with track #{artist} - #{title}"
       end
-    end if week_list.present?
-    File.open('log/all_tracks_not_found_in_your_collection.yaml', 'w') { |f| f.write(tracks_not_found.sort.to_yaml) }
+    end
     bar.finish && puts
+    puts "#{lines.size} tracks processed, some were not found in your Amarok collection (details in file: data/not_found.log)"
+    @all_tracks
   end
 
   def save_statistic!
-    puts "save the statistics of all #{@all_tracks.size} tracks to database"
+    puts "save the statistics to database"
     bar = ProgressBar.new('saving', @all_tracks.size)
-    @all_tracks.each do |_,track|
-      artist = Artist.first(:conditions => ['LOWER(name) = ?', track[:artist].downcase])
-      unless artist.present?
-        #puts "Artist not found: #{track[:artist]}"
+    @all_tracks.each do |url, track|
+      statistic = Statistic.find_by_url(url)
+      unless statistic
+        puts "Statistic not found: #{url} - #{track[:artist]} - #{track[:title]} - #{Time.at(track[:createdate])} - #{Time.at(track[:accessdate])}"
         next
       end
 
-      s = Statistic.all(
-              :conditions => ['artist = ? AND LOWER(tracks.title) = ?', artist.id, track[:title].downcase],
-              :include => 'track'
+      #puts "#{url}: #{track[:artist]} - #{track[:title]} - #{Time.at(track[:createdate])} - #{Time.at(track[:accessdate])}"
+      statistic.update_attributes(
+              :playcount => track[:playcount],
+              :accessdate => track[:accessdate],
+              :createdate => track[:createdate]
       )
-      unless s
-        #puts "Statistic not found: #{track[:artist]} - #{track[:title]}"
-        next
-      end
-
-      s.each do |statistic|
-        #str = "#{track[:artist]} - #{track[:title]} playcount:#{track[:playcount]} score:#{track[:score]} "
-        #str += Time.at(track[:accessdate]).strftime("%Y-%m-%d %H:%I:%S") + " - " if track[:accessdate]
-        #str += Time.at(track[:createdate]).strftime("%Y-%m-%d %H:%I:%S") if track[:createdate]
-        #puts str
-
-        statistic.update_attributes(
-                :playcount => track[:playcount],
-                :score => track[:score],
-                :accessdate => track[:accessdate],
-                :createdate => track[:createdate]
-        )
-      end
       bar.inc
     end
     bar.finish && puts
